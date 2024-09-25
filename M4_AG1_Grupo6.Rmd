@@ -1,0 +1,261 @@
+
+---
+title:    "Ejercicio práctico Clustering"
+license:  by-nc-sa
+urlcolor: blue
+output:
+  word_document:  default
+  html_document: 
+    theme:        cosmo 
+    highlight:    tango 
+    toc:          true
+    toc_float:    true
+    code_folding: show
+  epuRate::epurate:
+    toc:             TRUE
+    number_sections: FALSE
+    code_folding:    "show"
+  pdf_document:   default
+---
+
+<style>
+body {
+text-align: justify}
+</style>
+
+# 1. Planteamiento del problema
+
+Para este ejercicio nos enfocaremos en los negocios que peor lo están pasando con esta crisis, los pequeños negocios. Las pequeñas empresas representan el 99% de todas las empresas en Estados Unidos y casi el 50% del empleo, así que son un motor indispensable para el desarrollo económico. 
+
+Todos los años, la Administración de Pequeñas Empresas de EE.UU. (SBA) publica una informe anual de la actividad de las pequeñas empresas en cada estado. Para este ejercicio, utilizaremos parte de los datos publicados por este organismo público e intentaremos obtener alguna conclusión mediante el Clustering.
+
+El dataset y el diccionario de datos podrás encontrarlo en la carpeta data.
+
+Así pues, lo primero que haremos es cargar el dataset en R:
+
+```{r,warning=FALSE,message=FALSE}
+# Carga paquetes necesarios
+require(factoextra)
+library(dplyr)
+library(tidyverse)
+
+# Carga el dataset
+df <- read.csv("C:/Users/rhsan/OneDrive/Documentos/Master Data Science/Modulo 4/Data (1)/Data/4.4_Cluster_ejercicio.csv", sep = ",", header = TRUE)
+str(df)
+colnames(df)
+
+```
+
+## 1.1 Preparación del dataset.
+
+Tal y como podrás comprobar, el dataset tiene una dimensión de 51 observaciones (correspondientes a cada uno de los estados federales de USA) y 16 variables (correspondientes a datos económicos relativos a pequeños negocios). Si necesitas más información acerca de qué significa cada variable, podrás encontrarla en el diccionario de datos.
+
+Tal y como podrás comprobar, existen ciertas variables en las cuales hay asteriscos. Estos representan valores nulos (NA). Por tanto, hay que hacer un tratamiento de estas variables para poder aplicar el clustering.
+
+* **Ejercicio 1**: Reemplaza los valores nulos (asteriscos) por la mediana y transforma las variables tratadas a tipo numerico.
+
+```{r}
+# Reemplazo los valores nulos por la mediana
+df[df == "*"] <- NA
+colSums(is.na(df))
+
+
+# Modifico el tipo de las variables tratadas a numerico
+df$AvgEmpPerWOB <- as.numeric(df$AvgEmpPerWOB)
+df$AvgEmpPerVOB <- as.numeric(df$AvgEmpPerVOB)
+df$AvgEmpPerMOB <- as.numeric(df$AvgEmpPerMOB)
+df$ShareProSvcEmploy <- as.numeric(df$ShareProSvcEmploy)
+
+# Reemplazar valores NA por la mediana en las columnas
+df <- df %>% mutate(across(c(AvgEmpPerWOB, AvgEmpPerVOB, AvgEmpPerMOB, ShareProSvcEmploy), ~replace_na(., median(., na.rm=TRUE))))
+# Comprobar los cambios realizados
+str(df)
+summary(df)
+print(df)
+
+
+```
+
+Una vez realizada la imputación de los valores nulos, es necesario que observes el rango de las variables que vas a utilizar para el clustering y valores si es necesario transformarlas o no.
+
+* **Ejercicio 2**: Crea un nuevo dataframe con todas las variables estandarizadas en el cuál cada fila tenga como nombre cada uno de los estados.
+
+```{r}
+
+# Añado la variable States como nombre de fila en el nuevo dataframe
+df_nuevo <- as.data.frame(df)
+rownames(df_nuevo) <- df_nuevo$State
+df_nuevo <- df_nuevo[,-1]
+# Reescalo las variables creando un nuevo dataframe
+df_nuevo <- scale(df_nuevo)
+
+# Sumarizo las variables
+summary(df_nuevo)
+
+
+```
+
+## 1.2 Creación de los clusters
+
+Una vez disponemos del dataframe preparado, es necesario estimar el número de clusters óptimo. Pese a que puede ser un proceso subjetivo, existen algunos métodos que pueden ayudarnos a tomar la decisión.
+
+* **Ejercicio 3**: Elige el número de clusters óptimos mediante el método elbow. ¿Observas algún otro número que también podría ser óptimo? Justifica tu respuesta.
+
+```{r}
+# Visualización del elbow method
+
+fviz_nbclust(x =df_nuevo, FUNcluster = kmeans, method = "wss", k.max = 15, diss = get_dist(df_nuevo, method = "euclidean"), nstart = 50)
+ 
+print("Se puede ver en la curva que no tiene un  codo bien definido, pero la reducción en la suma total de cuadrados internos tiene un inicio de su estabilización en 4, por lo que K=4 es una buena opción. Sin embargo, podría estar entre 4 y 8."
+)
+
+```
+
+
+
+
+* **Ejercicio 4**: Elige el número de clusters óptimos mediante la representación del dendrograma. ¿Observas algún otro número que también podría ser óptimo? Justifica tu respuesta.
+
+```{r}
+library(factoextra)
+
+# Visualización del dendrograma
+
+set.seed(101)
+hc_euclidea_completo <- hclust(d = dist(x = df_nuevo, method = "euclidean"),
+                      method = "complete")
+
+fviz_dend(x = hc_euclidea_completo, cex = 0.5, main = "Linkage Completo",
+          sub = "Euclidean Distance") +
+  theme(plot.title = element_text(hjust = 0.5, size = 15))
+
+print("Al observar el dendograma, se puede ver que df of columbia se encuentra separado de los otros dos subcgrupos, por lo que no se considerará debido a su gran diferencia con los otros.  El optimo podría estar entre 4 y 8 ya que explican una gran cantidad de los datos.")
+
+```
+
+
+Una vez tomada la decisión del número de clusters a realizar, procedemos a crear y visualizar los clusters en dos dimensiones.
+
+* **Ejercicio 5**: Crea el número de clusters elegido y representalo en dos dimensiones utilizando la función fviz_cluster.
+
+```{r}
+# Creacion de los clusters
+set.seed(12345)
+km_clusters <- kmeans(x = df_nuevo, centers = 4, nstart = 50)
+
+# Visualización de los clusters en 2 dimensiones
+fviz_cluster(object = km_clusters, data = df_nuevo, show.clust.cent = TRUE,
+             elipse.type = "euclid", star.plot = TRUE, repel = TRUE) +
+  labs(title = "Resultados clustering k-means") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+```
+
+## 1.3 Interpretación de los clusters
+
+Una vez disponemos de la visualización en dos dimensiones de los estados que pertenecen a cada cluster creado, vamos a la parte interesante, la interpretación de estos.
+
+* **Ejercicio 6**: Elige qué estado consideras que es más representativo de cada cluster. Justifica tu respuesta.
+
+```{r}
+
+# Calculating the distance of each state to its centroid
+distancia <- sqrt(rowSums((df_nuevo - fitted(km_clusters))^ 2))
+distancia <- as.data.frame(distancia)
+
+# Creating a classification of each state with its cluster
+clasificacion_cluster <-  as.data.frame(km_clusters[1])
+
+# Creating the state variable in the dataframe with states grouped by cluster and distances
+clasificacion_cluster <- rownames_to_column(clasificacion_cluster, var = "State")
+distancia <- rownames_to_column(distancia, var = "State")
+
+# Merging the two dataframes
+distancia <- inner_join(distancia, clasificacion_cluster, by = "State")
+
+
+# Checking the state of each cluster with the lowest distance to its centroid
+distancia %>% select("State", "distancia", "cluster") %>% arrange(distancia)
+
+
+print("Para conocer el más representativo de cada cluster, se calculan las distancias al centroide. En este caso, las menores distancias representativas de cada cluster, son Illinois, South Carolina y Maine")
+
+```
+
+
+* **Ejercicio 7**: Indexa cada uno de los estados más representativos de cada cluster sobre el dataframe inicial y crea un nuevo tablón de datos en el que únicamente se encuentren estos estados. ¿Qué variables difieren en más en valor entre unos estados y otros?
+
+```{r}
+# Selecciono los estados que quiero ver en un vector
+estados <- c("Illinois", "District of Columbia", "South Carolina", "Maine")
+
+# Creo nuevo dataframe sobre el tablon inicial solo con los estados que quiero ver
+
+df_estados <- subset(df, rownames(df_nuevo) %in% estados)
+df_estados_new <- subset(df_nuevo, rownames(df_nuevo) %in% estados)
+df_estados_new <- as.data.frame(df_estados_new)
+df_diferencia <- data.frame(apply(df_estados_new, 2, function(x) max(x) - min(x)))
+df_diferencia %>% arrange(desc(apply.df_estados_new..2..function.x..max.x....min.x..))
+# Introduce aquí tu respuesta
+print("Difieren PercentExportValue, PercentSmallBiz, MedIncomeSelfEmpCorp, y AvgEmPerSmallBiz")
+
+```
+
+* **Ejercicio 8**: ¿Cuál de los estados seleccionados en el ejercicio anterior tiene una tasa de desempleo más elevada?
+
+```{r}
+df_estados %>% select(State, StateUnemployRate)
+
+print("El District of Columbia tiene el desempleo mas elevado")
+
+```
+
+* **Ejercicio 9**: Si el presidente de los Estados Unidos quisiera lanzar una campaña para aumentar el volumen de exportaciones de pequeños negocios hacia el exterior sobre los estados que menos exportan del país, y con menor valor, qué cluster o clusters le propondrías? (Menciona únicamente el estado que consideres más representativo del cluster)
+
+```{r}
+clusters_mean <- data.frame(State = rownames(df_nuevo), cluster = km_clusters$cluster)
+df <- inner_join(df, clusters_mean, by = "State")
+df %>%
+  select(State, cluster, PercentExportValue, PercentExportSmallBiz, MedIncomeSelfEmpCorp) %>%
+  filter(cluster == 3) %>%
+  arrange(PercentExportValue)
+
+print("El cluster 3 tiene los valores mas bajos del PercentExportValue, por lo que el mas representativo es South Carolina")
+```
+
+* **Ejercicio 10**: ¿Qué cluster representa mejor a los pequeños negocios con más ingresos?
+
+```{r}
+# Introduce aquí tu respuesta
+
+df %>% select(State, cluster, PercentExportValue) %>% arrange(desc(PercentExportValue))
+
+print("El cluster 4 tiene el porcentaje de exportacion mas alto, para el estado District of Columbia")
+
+```
+
+## 1.4 Puntuación del del ejercicio
+
+Este ejercicio se puntuará con 10 puntos, siendo el mínimo necesario para superar la prueba de 5 puntos. 
+La puntuación es la siguiente:
+
+* Ejercicio 1: 0.5 puntos
+
+* Ejercicio 2: 0.5 puntos
+
+* Ejercicio 3: 1 punto
+
+* Ejercicio 4: 1 punto
+
+* Ejercicio 5: 1.5 puntos
+
+* Ejercicio 6: 1 punto
+
+* Ejercicio 7: 1.5 puntos
+
+* Ejercicio 8: 1 punto
+
+* Ejercicio 9: 1 punto
+
+* Ejercicio 10: 1 punto
